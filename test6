@@ -1,0 +1,62 @@
+既然 Ctrl + Alt + Shift + J 被公司策略拦截了，说明你们的 ServiceNow 环境安全加固做得非常严。但没关系，既然你能通过 F12 看到 XHR 请求和 HTML 源码，我们依然有办法“硬核”破解。
+既然 sysparm_query 配合 user_name 这种“跨表点操作”失效，通常是因为公司内网禁用了 URL 层的动态解析。
+我们尝试以下两个目前最有可能成功的绕过方案：
+方案一：使用 DISPLAY: 前缀（最强强制解析）
+这是 ServiceNow 隐藏的一个特性：在 URL 中直接告诉系统“这个字符串是用来显示的”，强制它触发后台搜索。
+请修改你 JS 代码中的 queryParts 部分：
+// 注意：我们在值的前面加上了 DISPLAY: 这个前缀
+if (userInput) {
+    // 强制让 SNOW 把这个字符串当作显示值来处理
+    queryParts.push(`caller_id=DISPLAY:${encodeURIComponent(userInput)}`);
+    queryParts.push(`u_affected_user=DISPLAY:${encodeURIComponent(userInput)}`);
+}
+
+关键参数组合：
+在生成 finalUrl 时，务必保留 &sysparm_display_value=true。
+方案二：跳出 sysparm_query，直接作为一级参数
+有些 SNOW 环境配置了“初始化脚本”，会清空 sysparm_query 里的引用字段。但如果你把参数直接写在 ? 后面（不放在 query 里），它有时能绕过脚本。
+请尝试修改你的 finalUrl 拼接逻辑：
+function generateAndJump() {
+    const instance = document.getElementById('snow_instance').value.trim();
+    const userInput = document.getElementById('affected_user').value.trim();
+    const shortDesc = document.getElementById('short_desc').value.trim();
+    const desc = document.getElementById('description').value.trim();
+
+    // 1. 把能填上的填入 query
+    let query = `short_description=${encodeURIComponent(shortDesc)}^description=${encodeURIComponent(desc)}`;
+
+    // 2. 把用户 ID 放到 query 外面，作为独立参数
+    // 同时带上 sysparm_display_value=true，告诉它这两个是显示名/UID
+    const finalUrl = `${instance}/incident.do?sys_id=-1` + 
+                     `&sysparm_query=${query}` +
+                     `&caller_id=${encodeURIComponent(userInput)}` + 
+                     `&u_affected_user=${encodeURIComponent(userInput)}` +
+                     `&sysparm_display_value=true`;
+
+    window.open(finalUrl, '_blank');
+}
+
+3. 如何在 Edge 里确认 Incident 表的字段名？
+由于快捷键被锁，请在 New Incident 页面用 Edge 这样做：
+ * 右键点击 "Caller" 这个标签（Label）文字 -> 选择 “检查” (Inspect)。
+ * 在开发者工具里，看这个 <label> 标签的 for 属性。
+   * 如果 for="incident.caller_id"，那么字段名就是 caller_id。
+   * 如果 for="incident.u_custom_caller"，那么代码里必须改成 u_custom_caller。
+4. 为什么你观察到的 XHR (xmlhttp.do) 很有意义？
+你观察到输入 5 个字符后出现有效用户，且 sysparm_chars 是你输入的内容，这证明：
+ * SNOW 确实在用 user_name 进行搜索。
+ * 痛点在于： 页面加载时，URL 里的字符串没有被自动触发成“搜索动作”。
+如果方案一和方案二还是空，那么这就是最后的“半自动”绝招了：
+方案三：Focus 策略（体验最好）
+既然自动填充被封死，我们可以利用浏览器的 剪贴板。
+ * 在你的 HTML 页面增加一个逻辑：点击按钮时，自动把 UID 复制到剪贴板。
+ * 跳转到 SNOW 后，页面是空的。
+ * 程序弹出一个很小的提示：“UID 已复制，请在 Caller 框粘贴并回车”。
+// 在 JS 跳转前增加这一行
+navigator.clipboard.writeText(userInput); 
+
+总结建议：
+请务必先试一下 方案一（使用 DISPLAY: 前缀）。
+如果这个前缀配合 sysparm_display_value=true 依然无法让 SNOW 自动把 UID 转换成“人名”，那说明你们公司的 SNOW 客户端脚本（Client Script）在页面加载（onLoad）时做了强制清空动作。
+在这种极端安全限制下，方案二（独立参数法） 是最后的程序尝试。
+你先试一下 caller_id=DISPLAY:UID 这个写法，这在很多加固过的 SNOW 环境里是唯一能强制解析字符串的“后门”。
