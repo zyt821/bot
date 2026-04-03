@@ -1,0 +1,49 @@
+function generateAndJump() {
+    const instance = document.getElementById('snow_instance').value.trim();
+    const userInput = document.getElementById('affected_user').value.trim(); 
+    const shortDesc = document.getElementById('short_desc').value.trim();
+    const desc = document.getElementById('description').value.trim();
+    const group = document.getElementById('assignment_group').value;
+
+    let queryParts = [];
+    
+    // 基础内容
+    if (shortDesc) queryParts.push("short_description=" + encodeURIComponent(shortDesc));
+    if (desc)      queryParts.push("description=" + encodeURIComponent(desc));
+    if (group)     queryParts.push("assignment_group=" + group);
+
+    // 【核心修改点】
+    if (userInput) {
+        /* 方案 A: 尝试通过 user_name 匹配 (最常见)
+           如果你的 HTML 源码里那个字段真的是 username (没下划线)，
+           请把下面的 user_name 改成 username
+        */
+        queryParts.push("caller_id.user_name=" + encodeURIComponent(userInput));
+        queryParts.push("u_affected_user.user_name=" + encodeURIComponent(userInput));
+    }
+
+    const finalQuery = queryParts.join('^');
+
+    /* 【关键参数】sysparm_display_value=all
+       这会告诉 SNOW：“我给你的是显示在屏幕上的值，请你在后台帮我查出对应的 ID 并填好”
+    */
+    const finalUrl = `${instance}/incident.do?sys_id=-1` + 
+                     `&sysparm_query=${finalQuery}` + 
+                     `&sysparm_display_value=all` +
+                     `&sysparm_query_encoded=true`; // 强制触发前端校验
+
+    console.log("最终跳转 URL:", finalUrl);
+    window.open(finalUrl, '_blank');
+}
+—————————————
+如果还是不行，试试这个“暴力”方案
+有些公司的 SNOW 配置极其特殊，禁用了 URL 里的点号查询（dot-walking）。如果上面的代码跳转后还是空的，请尝试把：
+queryParts.push("caller_id.user_name=" + ...)
+改为：
+queryParts.push("caller_id=" + encodeURIComponent(userInput));
+并确保末尾带有 &sysparm_display_value=all。
+5. 最后的“笨办法”：手动触发
+如果上述自动填充在 Reference 字段上彻底失效（由于公司安全策略严密封锁了 URL 传参给引用字段），你可以采取折中方案：
+1.	代码修改： 把 UID 填入 description 的开头（例如：Affected User UID: E123456\n\n[正文...]）。
+2.	操作逻辑： 同事点开链接后，内容已经在描述里了。他只需要复制描述第一行的 UID，粘贴到 Caller 框里，回车。
+虽然多了一次复制粘贴，但相比手动填写整个 Template，依然节省了 90% 的时间。
