@@ -1,0 +1,33 @@
+function generateAndJump() {
+    const instance = document.getElementById('snow_instance').value.trim();
+    const userInput = document.getElementById('affected_user').value.trim(); // 同事UID
+    const shortDesc = document.getElementById('short_desc').value.trim();
+    const desc = document.getElementById('description').value.trim();
+    const group = document.getElementById('assignment_group').value;
+
+    let queryParts = [];
+    
+    // 1. 基础字段
+    if (shortDesc) queryParts.push("short_description=" + encodeURIComponent(shortDesc));
+    if (desc)      queryParts.push("description=" + encodeURIComponent(desc));
+    if (group)     queryParts.push("assignment_group=" + group);
+
+    // 2. 利用你刚刚查到的 user_name 进行精确匹配
+    if (userInput) {
+        // 使用你查到的后台真名 user_name
+        queryParts.push(`caller_id.user_name=${encodeURIComponent(userInput)}`);
+        queryParts.push(`u_affected_user.user_name=${encodeURIComponent(userInput)}`);
+    }
+
+    // 3. 在查询末尾加上 ^EQ (End of Query)，这是 SNOW 识别复杂查询的标志
+    const finalQuery = queryParts.join('^') + "^EQ";
+
+    // 4. 组合最终 URL
+    // 注意：增加了 sysparm_display_value=all
+    const finalUrl = `${instance}/incident.do?sys_id=-1` + 
+                     `&sysparm_query=${finalQuery}` + 
+                     `&sysparm_display_value=all`;
+
+    console.log("生成的最终链接:", finalUrl);
+    window.open(finalUrl, '_blank');
+}
